@@ -1,3 +1,4 @@
 [submodule "upstream"]
 	path = upstream
-	url = https://github.com/PostHog/posthog
+	url = https://github.com/PostHog/posthog.git
+	branch = master
