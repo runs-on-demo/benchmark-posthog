@@ -1,0 +1,47 @@
+name: Benchmark
+on:
+  push: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-with-docker:
+    name: Build with Docker
+    strategy:
+      matrix:
+        image:
+          - ubuntu-22.04
+          - ubuntu-22.04-arm
+    runs-on: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/build-push-action@v3
+        with:
+          context: ./upstream
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-with-runs-on:
+    name: Build with RunsOn
+    strategy:
+      matrix:
+        image:
+          - ubuntu22-full-x64
+          - ubuntu22-full-arm64
+    runs-on: runs-on=${{ github.run_id }},family=c7+m7+r7,cpu=4,extras=s3-cache,image=${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/build-push-action@v3
+        with:
+          context: ./upstream
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
