@@ -34,7 +34,7 @@ jobs:
         image:
           - ubuntu22-full-x64
           - ubuntu22-full-arm64
-    runs-on: runs-on=${{ github.run_id }},family=c7+m7+r7,cpu=4,extras=s3-cache,image=${{ matrix.image }}
+    runs-on: runs-on=${{ github.run_id }},image=${{ matrix.image }},family=c7+m7+r7,cpu=4,extras=s3-cache,env=demo
     steps:
       - uses: actions/checkout@v4
         with:
