@@ -1,9 +1,7 @@
 name: Benchmark
 on:
-  workflow_run:
-    workflows: [Sync]
+  push:
     branches: [main]
-    types: [completed]
   workflow_dispatch: {}
 
 permissions:
@@ -13,6 +11,7 @@ jobs:
   build-with-docker:
     name: Build with Docker
     strategy:
+      fail-fast: false
       matrix:
         image:
           - ubuntu-22.04
@@ -32,6 +31,7 @@ jobs:
   build-with-runs-on:
     name: Build with RunsOn
     strategy:
+      fail-fast: false
       matrix:
         image:
           - ubuntu22-full-x64
