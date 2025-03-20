@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  build-with-docker:
-    name: Build with Docker
+  build-with-github:
+    name: Build with GitHub
     strategy:
       fail-fast: false
       matrix:
@@ -23,29 +23,50 @@ jobs:
           submodules: recursive
       - name: Reclaim some disk space
         run: sudo rm -rf /opt
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/build-push-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v4
         with:
           context: ./upstream
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,compression=zstd
 
-  build-with-runs-on:
-    name: Build with RunsOn
+  build-with-runs-on-magic-cache:
+    name: Build with RunsOn (magic cache)
     strategy:
       fail-fast: false
       matrix:
         image:
           - ubuntu22-full-x64
           - ubuntu22-full-arm64
-    runs-on: runs-on=${{ github.run_id }},image=${{ matrix.image }},family=c7+m7+r7,cpu=4,extras=s3-cache,env=demo
+    runs-on: runs-on=${{ github.run_id }},image=${{ matrix.image }},family=i7ie.large,extras=s3-cache,env=demo
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/build-push-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v4
         with:
           context: ./upstream
           cache-from: type=gha
-          cache-to: type=gha,mode=min,compression=zstd
+          cache-to: type=gha,mode=max,compression=zstd
+
+  build-with-runs-on-s3-cache:
+    name: Build with RunsOn (s3 cache)
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu22-full-x64
+          - ubuntu22-full-arm64
+    runs-on: runs-on=${{ github.run_id }},image=${{ matrix.image }},family=i7ie.large,extras=s3-cache,env=demo
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v4
+        with:
+          context: ./upstream
+          cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+      
