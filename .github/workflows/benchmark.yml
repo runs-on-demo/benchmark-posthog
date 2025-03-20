@@ -36,10 +36,10 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu22-full-x64,family=m7a.large
-          - image=ubuntu22-full-x64,family=i7ie.large
-          - image=ubuntu22-full-arm64,family=r7gd.large
-          - image=ubuntu22-full-arm64,family=r8g.large
+          - image=ubuntu22-full-x64,family=m7a.2xlarge
+          - image=ubuntu22-full-x64,family=i7ie.2xlarge
+          - image=ubuntu22-full-arm64,family=r7gd.2xlarge
+          - image=ubuntu22-full-arm64,family=r8g.2xlarge
     runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo
     steps:
       - uses: actions/checkout@v4
@@ -58,10 +58,10 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu22-full-x64,family=m7a.large
-          - image=ubuntu22-full-x64,family=i7ie.large
-          - image=ubuntu22-full-arm64,family=r7gd.large
-          - image=ubuntu22-full-arm64,family=r8g.large
+          - image=ubuntu22-full-x64,family=m7a.2xlarge
+          - image=ubuntu22-full-x64,family=i7ie.2xlarge
+          - image=ubuntu22-full-arm64,family=r7gd.2xlarge
+          - image=ubuntu22-full-arm64,family=r8g.2xlarge
     runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo
     steps:
       - uses: actions/checkout@v4
