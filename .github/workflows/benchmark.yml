@@ -30,18 +30,19 @@ jobs:
           # cache-from: type=gha
           cache-to: type=gha,mode=max,compression=zstd
 
-  build-with-runs-on-magic-cache:
-    name: Build with RunsOn (magic cache)
+  build-with-runs-same-cpu-count:
+    name: Build with RunsOn (same cpu count)
     strategy:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu22-full-x64,family=m7a.2xlarge
-          - image=ubuntu22-full-x64,family=i7ie.2xlarge
-          - image=ubuntu22-full-arm64,family=r7gd.2xlarge
-          - image=ubuntu22-full-arm64,family=r8g.2xlarge
+          - image=ubuntu22-full-x64,family=i7ie.large
+          - image=ubuntu22-full-arm64,family=r8g.large
     runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo
     steps:
+      - uses: runs-on/action@feature/costs
+        with:
+          show_costs: 'summary'
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -52,18 +53,19 @@ jobs:
           # cache-from: type=gha
           cache-to: type=gha,mode=max,compression=zstd
 
-  build-with-runs-on-s3-cache:
-    name: Build with RunsOn (s3 cache)
+  build-with-runs-on-more-cpu-count:
+    name: Build with RunsOn (more cpu count)
     strategy:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu22-full-x64,family=m7a.2xlarge
           - image=ubuntu22-full-x64,family=i7ie.2xlarge
-          - image=ubuntu22-full-arm64,family=r7gd.2xlarge
           - image=ubuntu22-full-arm64,family=r8g.2xlarge
     runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo
     steps:
+      - uses: runs-on/action@feature/costs
+        with:
+          show_costs: 'summary'
       - uses: actions/checkout@v4
         with:
           submodules: recursive
