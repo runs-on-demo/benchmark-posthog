@@ -19,8 +19,8 @@ jobs:
           - ubuntu-22.04
           - ubuntu-22.04-arm
         caching:
-          - enabled
-          - disabled
+          - cache=enabled
+          - cache=disabled
     runs-on: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
@@ -30,20 +30,18 @@ jobs:
         run: sudo rm -rf /opt
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v4
-        if: ${{ matrix.caching == 'enabled' }}
+        if: ${{ matrix.caching == 'cache=enabled' }}
         with:
           context: ./upstream
           cache-from: type=gha
           cache-to: type=gha,mode=max,compression=zstd
       - uses: docker/build-push-action@v4
-        if: ${{ matrix.caching == 'disabled' }}
+        if: ${{ matrix.caching == 'cache=disabled' }}
         with:
           context: ./upstream
-          # cache-from: type=gha
-          cache-to: type=gha,mode=max,compression=zstd
 
   build-with-runs-on:
-    name: Build with RunsOn (more cpu count)
+    name: Build with RunsOn
     strategy:
       fail-fast: false
       matrix:
@@ -55,9 +53,9 @@ jobs:
           - image=ubuntu22-full-x64,family=i7ie.2xlarge
           - image=ubuntu22-full-arm64,family=r8g.2xlarge
         caching:
-          - enabled
-          - disabled
-    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo,tag=caching-${{ matrix.caching }}
+          - cache=enabled
+          - cache=disabled
+    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo,tag=${{ matrix.caching }}
     steps:
       - uses: runs-on/action@feature/costs
         with:
@@ -67,15 +65,13 @@ jobs:
           submodules: recursive
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v4
-        if: ${{ matrix.caching == 'enabled' }}
+        if: ${{ matrix.caching == 'cache=enabled' }}
         with:
           context: ./upstream
-          cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,compression=zstd
       - uses: docker/build-push-action@v4
-        if: ${{ matrix.caching == 'disabled' }}
+        if: ${{ matrix.caching == 'cache=disabled' }}
         with:
           context: ./upstream
-          # cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
       
