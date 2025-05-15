@@ -11,13 +11,13 @@ permissions:
 
 jobs:
   build-with-github:
-    name: Build with GitHub
+    name: GitHub / ${{ matrix.image }} / ${{ matrix.caching }}
     strategy:
       fail-fast: false
       matrix:
         image:
-          - ubuntu-22.04
-          - ubuntu-22.04-arm
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         caching:
           - cache=enabled
           - cache=disabled
@@ -41,21 +41,17 @@ jobs:
           context: ./upstream
 
   build-with-runs-on:
-    name: Build with RunsOn
+    name: RunsOn / ${{ matrix.runner }} / ${{ matrix.caching }}
     strategy:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu22-full-x64,family=i7ie.large
-          - image=ubuntu22-full-arm64,family=r8g.large
-          - image=ubuntu22-full-x64,family=i7ie.xlarge
-          - image=ubuntu22-full-arm64,family=r8g.xlarge
-          - image=ubuntu22-full-x64,family=i7ie.2xlarge
-          - image=ubuntu22-full-arm64,family=r8g.2xlarge
+          - image=ubuntu24-full-x64,family=r7a.xlarge
+          - image=ubuntu24-full-arm64,family=r8g.xlarge
         caching:
           - cache=enabled
           - cache=disabled
-    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=s3-cache,env=demo,tag=${{ matrix.caching }}
+    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=tmpfs+ecr-cache,env=demo,tag=${{ matrix.caching }}
     steps:
       - uses: runs-on/action@feature/costs
         with:
@@ -66,10 +62,14 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v4
         if: ${{ matrix.caching == 'cache=enabled' }}
+        env:
+          TAG: "${{ env.RUNS_ON_ECR_CACHE }}:posthog-latest"
         with:
           context: ./upstream
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,compression=zstd
+          push: true
+          tags: ${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.TAG }}
+          cache-to: type=registry,ref=${{ env.TAG }},mode=max
       - uses: docker/build-push-action@v4
         if: ${{ matrix.caching == 'cache=disabled' }}
         with:
