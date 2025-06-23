@@ -53,7 +53,7 @@ jobs:
           - cache=disabled
     runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=tmpfs+ecr-cache,env=demo,tag=${{ matrix.caching }}
     steps:
-      - uses: runs-on/action@feature/costs
+      - uses: runs-on/action@v2
         with:
           show_costs: 'summary'
       - uses: actions/checkout@v4
