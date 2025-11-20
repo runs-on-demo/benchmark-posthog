@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - ubuntu-24.04
+          - ubuntu-24.04-4
           - ubuntu-24.04-arm
         caching:
           - cache=enabled
