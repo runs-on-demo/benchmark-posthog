@@ -53,8 +53,8 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu24-full-x64,family=r7a.2xlarge
-          - image=ubuntu24-full-arm64,family=r8g.2xlarge
+          - image=ubuntu24-full-x64,family=r8a.xlarge
+          - image=ubuntu24-full-arm64,family=r8g.xlarge
         caching:
           - cache=enabled
           - cache=disabled
