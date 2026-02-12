@@ -58,7 +58,7 @@ jobs:
         caching:
           - cache=enabled
           - cache=disabled
-    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=ecr-cache,env=demo,tag=${{ matrix.caching }}
+    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=tmpfs+ecr-cache,volume:80gb,env=demo,tag=${{ matrix.caching }}
     steps:
       - uses: runs-on/action@v2
         with:
