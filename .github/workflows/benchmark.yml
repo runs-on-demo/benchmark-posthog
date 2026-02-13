@@ -63,6 +63,7 @@ jobs:
       - uses: runs-on/action@v2
         with:
           show_costs: 'summary'
+          metrics: cpu,memory,disk
       - uses: actions/checkout@v5
         with:
           submodules: recursive
