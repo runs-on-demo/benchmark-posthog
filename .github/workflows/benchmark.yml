@@ -53,12 +53,12 @@ jobs:
       fail-fast: false
       matrix:
         runner:
-          - image=ubuntu24-full-x64,family=m8azn.3xlarge
-          - image=ubuntu24-full-arm64,family=r8g.2xlarge
+          - image=ubuntu24-full-x64,family=m8azn.xlarge
+          - image=ubuntu24-full-arm64,family=r8g.xlarge
         caching:
           - cache=enabled
           - cache=disabled
-    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=ecr-cache+tmpfs,volume=120gb,env=demo,tag=${{ matrix.caching }}
+    runs-on: runs-on=${{ github.run_id }},${{ matrix.runner }},extras=ecr-cache,volume=120gb,env=demo,tag=${{ matrix.caching }}
     steps:
       - uses: runs-on/action@v2
         with:
