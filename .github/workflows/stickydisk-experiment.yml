@@ -35,7 +35,7 @@ jobs:
             runner: runs-on/fleet=benchmark-posthog-s3/env=dev
             runs_on: true
             sticky: false
-          - backend: runs-on-sticky-disk-750mbps
+          - backend: runs-on-sticky-disk-400mbps
             runner: runs-on/fleet=benchmark-posthog-sticky/env=dev
             runs_on: true
             sticky: true
@@ -112,7 +112,7 @@ jobs:
           docker version
           docker buildx version
           docker buildx inspect --bootstrap
-          if [ "${BACKEND}" = "runs-on-sticky-disk-750mbps" ]; then
+          if [ "${BACKEND}" = "runs-on-sticky-disk-400mbps" ]; then
             test -f "${RUNS_ON_STICKYDISK_READY_FILE}"
             grep -Fx "${RUNS_ON_STICKYDISK_DIR}" "${RUNS_ON_STICKYDISK_READY_FILE}"
             test -d "${RUNS_ON_STICKYDISK_DIR}/buildkit/root"
@@ -125,8 +125,8 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./upstream
-          cache-from: type=gha,scope=posthog-m8a-stickydisk-v3
-          cache-to: type=gha,scope=posthog-m8a-stickydisk-v3,mode=max
+          cache-from: type=gha,scope=posthog-m8a-stickydisk-v4-400mbps
+          cache-to: type=gha,scope=posthog-m8a-stickydisk-v4-400mbps,mode=max
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
