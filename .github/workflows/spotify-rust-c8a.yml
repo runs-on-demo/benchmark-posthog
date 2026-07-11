@@ -33,7 +33,7 @@ jobs:
             runner: runs-on/fleet=benchmark-spotify-c8a-s3/env=dev
             runs_on: true
             sticky: false
-          - backend: runs-on-c8a-sticky-400mbps
+          - backend: runs-on-c8a-sticky-125mbps
             runner: runs-on/fleet=benchmark-spotify-c8a-sticky/env=dev
             runs_on: true
             sticky: true
@@ -80,7 +80,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: spotify-public-4cpu-deps-v3-400mbps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: spotify-public-4cpu-deps-v4-125mbps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Restore RunsOn S3 cache
         if: ${{ matrix.runs_on && !matrix.sticky }}
@@ -91,7 +91,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: spotify-c8a-s3-v3-400mbps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: spotify-c8a-s3-v4-125mbps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Record environment and cache state
         env:
@@ -108,7 +108,7 @@ jobs:
           grep MemTotal /proc/meminfo
           rustc -Vv
           cargo -V
-          if [ "${BACKEND}" = "runs-on-c8a-sticky-400mbps" ]; then
+          if [ "${BACKEND}" = "runs-on-c8a-sticky-125mbps" ]; then
             test -f "${RUNS_ON_STICKYDISK_READY_FILE}"
             grep -Fx "${RUNS_ON_STICKYDISK_DIR}" "${RUNS_ON_STICKYDISK_READY_FILE}"
             mountpoint "$(realpath -m ~/.cargo/registry)"
