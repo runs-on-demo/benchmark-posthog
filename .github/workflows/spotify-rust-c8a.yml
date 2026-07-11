@@ -1,0 +1,135 @@
+name: Experiment / Spotify Rust c8a
+
+on:
+  push:
+    branches: [experiment/spotify-rust-c8a]
+  workflow_dispatch: {}
+
+concurrency:
+  group: experiment-spotify-rust-c8a
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUST_FEATURES: rodio-backend,media-control,image,notify,fzf
+  SPOTIFY_PLAYER_REF: c78df6e34f366aa6cd0fb7d07da96ea86198b33d
+
+jobs:
+  rust-ci:
+    name: ${{ matrix.backend }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: github-public-dependency-cache
+            runner: ubuntu-24.04
+            runs_on: false
+            sticky: false
+          - backend: runs-on-c8a-s3-cache
+            runner: runs-on/fleet=benchmark-spotify-c8a-s3/env=dev
+            runs_on: true
+            sticky: false
+          - backend: runs-on-c8a-sticky-750mbps
+            runner: runs-on/fleet=benchmark-spotify-c8a-sticky/env=dev
+            runs_on: true
+            sticky: true
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libasound2-dev libdbus-1-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Checkout spotify-player
+        uses: actions/checkout@v5
+        with:
+          repository: aome510/spotify-player
+          ref: ${{ env.SPOTIFY_PLAYER_REF }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Configure RunsOn and sticky cache
+        if: ${{ matrix.runs_on }}
+        id: runs-on
+        uses: runs-on/action@51a0a920309c039559294719d35f3ed5c5a3665c
+        with:
+          cache: ${{ matrix.sticky && 'rust' || 'false' }}
+          path: ${{ matrix.sticky && 'target' || '' }}
+          fail_on_missing: ${{ matrix.sticky }}
+          show_costs: summary
+          metrics: cpu,memory,disk
+
+      # Match the official spotify-player workflow: downloaded dependencies
+      # are cached, but target is rebuilt on every GitHub-hosted run.
+      - name: Restore GitHub dependency cache
+        if: ${{ !matrix.runs_on }}
+        id: github-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: spotify-public-4cpu-deps-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Restore RunsOn S3 cache
+        if: ${{ matrix.runs_on && !matrix.sticky }}
+        id: s3-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: spotify-c8a-s3-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Record environment and cache state
+        env:
+          BACKEND: ${{ matrix.backend }}
+          GITHUB_CACHE_HIT: ${{ steps.github-cache.outputs.cache-hit }}
+          S3_CACHE_HIT: ${{ steps.s3-cache.outputs.cache-hit }}
+          STICKY_CACHE_HIT: ${{ steps.runs-on.outputs.cache-hit }}
+        run: |
+          set -euxo pipefail
+          echo "BACKEND=${BACKEND}"
+          echo "CACHE_HIT=${STICKY_CACHE_HIT:-${S3_CACHE_HIT:-${GITHUB_CACHE_HIT:-false}}}"
+          echo "RUNS_ON_INSTANCE_TYPE=${RUNS_ON_INSTANCE_TYPE:-github-hosted}"
+          echo "CPUS=$(nproc)"
+          grep MemTotal /proc/meminfo
+          rustc -Vv
+          cargo -V
+          if [ "${BACKEND}" = "runs-on-c8a-sticky-750mbps" ]; then
+            test -f "${RUNS_ON_STICKYDISK_READY_FILE}"
+            grep -Fx "${RUNS_ON_STICKYDISK_DIR}" "${RUNS_ON_STICKYDISK_READY_FILE}"
+            mountpoint "$(realpath -m ~/.cargo/registry)"
+            mountpoint "$(realpath -m ~/.cargo/git)"
+            mountpoint "$(realpath -m target)"
+            cat "${RUNS_ON_STICKYDISK_TIMINGS_FILE}" 2>/dev/null || true
+            df -h "${RUNS_ON_STICKYDISK_DIR}"
+          fi
+
+      - name: Cargo format
+        run: /usr/bin/time -v cargo fmt --all -- --check
+
+      - name: Cargo test
+        run: /usr/bin/time -v cargo test --no-default-features --features "${RUST_FEATURES}"
+
+      - name: Cargo clippy with all features
+        run: /usr/bin/time -v cargo clippy --no-default-features --features "${RUST_FEATURES}" -- -D warnings
+
+      - name: Cargo clippy without features
+        run: /usr/bin/time -v cargo clippy --no-default-features -- -D warnings
+
+      - name: Final cache size
+        if: ${{ always() }}
+        run: du -sh ~/.cargo/registry ~/.cargo/git target 2>/dev/null || true
