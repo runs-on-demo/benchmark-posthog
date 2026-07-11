@@ -80,7 +80,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: spotify-public-4cpu-deps-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: spotify-public-4cpu-deps-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Restore RunsOn S3 cache
         if: ${{ matrix.runs_on && !matrix.sticky }}
@@ -91,7 +91,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: spotify-c8a-s3-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: spotify-c8a-s3-v2-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Record environment and cache state
         env:
