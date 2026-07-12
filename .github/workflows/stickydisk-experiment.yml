@@ -1,8 +1,6 @@
 name: Experiment / PostHog Cache Comparison
 
 on:
-  push:
-    branches: [experiment/posthog-stickydisk]
   workflow_dispatch:
     inputs:
       scenario:
@@ -100,6 +98,10 @@ jobs:
           buildkitd-config-inline: |
             ${{ steps.runs-on.outputs.buildkit-inline-config }}
             [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
               max-parallelism = 1
 
       - name: Record environment and cache state
@@ -207,6 +209,10 @@ jobs:
           buildkitd-config-inline: |
             ${{ steps.runs-on.outputs.buildkit-inline-config }}
             [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
               max-parallelism = 1
 
       - name: Sticky disk state before build
