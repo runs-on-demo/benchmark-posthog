@@ -51,10 +51,9 @@ jobs:
       - name: Configure RunsOn and sticky BuildKit cache
         if: ${{ matrix.runs_on }}
         id: runs-on
-        uses: runs-on/action@d246a920c88cfc47139d742d9e665534dd436842
+        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
         with:
-          cache: ${{ matrix.sticky && 'buildkit' || 'false' }}
-          fail_on_missing: ${{ matrix.sticky }}
+          sticky_cache: ${{ matrix.sticky && 'buildkit,fail-on-missing=true' || '' }}
           show_costs: summary
           metrics: cpu,memory,disk
 
@@ -162,10 +161,9 @@ jobs:
     steps:
       - name: Configure RunsOn and sticky BuildKit cache
         id: runs-on
-        uses: runs-on/action@d246a920c88cfc47139d742d9e665534dd436842
+        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
         with:
-          cache: buildkit
-          fail_on_missing: true
+          sticky_cache: buildkit,fail-on-missing=true
           show_costs: summary
           metrics: cpu,memory,disk
 

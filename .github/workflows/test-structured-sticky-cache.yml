@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: runs-on
-        uses: runs-on/action@29a3df35c24746d8ce4f38c89de22d639d47acff
+        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
         with:
           sticky_cache: |
             buildkit,fail-on-missing=true
@@ -56,7 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: runs-on
-        uses: runs-on/action@29a3df35c24746d8ce4f38c89de22d639d47acff
+        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
         with:
           sticky_cache: |
             buildkit,fail-on-missing=true
