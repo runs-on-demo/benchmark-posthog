@@ -2,6 +2,9 @@ name: Test / Structured Sticky Cache
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - experiment/posthog-stickydisk
 
 permissions:
   contents: read
