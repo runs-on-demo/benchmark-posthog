@@ -20,11 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: runs-on
-        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
+        uses: runs-on/action@ea79945d2c9578cfa268f7ec4c62221020805b42
         with:
           sticky_cache: |
-            buildkit,fail-on-missing=true
-            custom,path=.runs-on-action-e2e,fail-on-missing=true
+            buildkit
+            custom,path=.runs-on-action-e2e
       - name: Populate custom cache
         run: echo "${{ github.run_id }}" > .runs-on-action-e2e/marker
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -56,11 +56,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - id: runs-on
-        uses: runs-on/action@515da5fa397cefd35c57eb110f02c3e62dcc17a3
+        uses: runs-on/action@ea79945d2c9578cfa268f7ec4c62221020805b42
         with:
           sticky_cache: |
-            buildkit,fail-on-missing=true
-            custom,path=.runs-on-action-e2e,fail-on-missing=true
+            buildkit
+            custom,path=.runs-on-action-e2e
       - name: Verify restored custom cache
         env:
           CACHE_HIT: ${{ steps.runs-on.outputs.cache-hit }}
