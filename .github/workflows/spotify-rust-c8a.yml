@@ -61,11 +61,11 @@ jobs:
       - name: Configure RunsOn and sticky cache
         if: ${{ matrix.runs_on }}
         id: runs-on
-        uses: runs-on/action@51a0a920309c039559294719d35f3ed5c5a3665c
+        uses: runs-on/action@ea79945d2c9578cfa268f7ec4c62221020805b42
         with:
-          cache: ${{ matrix.sticky && 'rust' || 'false' }}
-          path: ${{ matrix.sticky && 'target' || '' }}
-          fail_on_missing: ${{ matrix.sticky }}
+          sticky_cache: |
+            ${{ matrix.sticky && 'rust' || '' }}
+            ${{ matrix.sticky && 'custom,path=target' || '' }}
           show_costs: summary
           metrics: cpu,memory,disk
 
