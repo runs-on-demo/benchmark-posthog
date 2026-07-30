@@ -30,11 +30,11 @@ jobs:
             runs_on: false
             sticky: false
           - backend: runs-on-c8a-s3-cache
-            runner: runs-on/fleet=benchmark-spotify-c8a-s3/env=dev
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=c8a.xlarge/extras=s3-cache/env=dev/spot=false
             runs_on: true
             sticky: false
           - backend: runs-on-c8a-sticky-300mbps
-            runner: runs-on/fleet=benchmark-spotify-c8a-sticky/env=dev
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=c8a.xlarge/sticky=spotify-feature-sticky-20260730:20gb:gp3:300mbps/env=dev/spot=false
             runs_on: true
             sticky: true
 
@@ -91,7 +91,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: spotify-c8a-s3-v5-300mbps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: spotify-c8a-s3-v6-feature-sticky-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Record environment and cache state
         env:
