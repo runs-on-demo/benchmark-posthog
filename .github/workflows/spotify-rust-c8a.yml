@@ -61,7 +61,7 @@ jobs:
       - name: Configure RunsOn and sticky cache
         if: ${{ matrix.runs_on }}
         id: runs-on
-        uses: runs-on/action@ea79945d2c9578cfa268f7ec4c62221020805b42
+        uses: runs-on/action@feature/sticky
         with:
           sticky_cache: |
             ${{ matrix.sticky && 'rust' || '' }}
