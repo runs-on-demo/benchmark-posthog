@@ -36,11 +36,11 @@ jobs:
             runs_on: false
             sticky: false
           - backend: runs-on-s3-cache
-            runner: runs-on/fleet=benchmark-posthog-s3/env=dev
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=dev/spot=false
             runs_on: true
             sticky: false
           - backend: runs-on-sticky-disk-300mbps
-            runner: runs-on/fleet=benchmark-posthog-sticky/env=dev
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260730:120gb:gp3:300mbps/env=dev/spot=false
             runs_on: true
             sticky: true
 
@@ -132,8 +132,8 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: ./upstream
-          cache-from: type=gha,scope=posthog-m8a-stickydisk-v6-300mbps
-          cache-to: type=gha,scope=posthog-m8a-stickydisk-v6-300mbps,mode=max
+          cache-from: type=gha,scope=posthog-m8a-feature-sticky-v7-300mbps
+          cache-to: type=gha,scope=posthog-m8a-feature-sticky-v7-300mbps,mode=max
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
@@ -155,7 +155,7 @@ jobs:
   pressure:
     if: ${{ inputs.scenario == 'disk-pressure' }}
     name: sticky-disk-pressure-${{ inputs.mutation_id }}
-    runs-on: runs-on/fleet=benchmark-posthog-sticky/env=dev
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260730:120gb:gp3:300mbps/env=dev/spot=false
     timeout-minutes: 90
 
     steps:

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   cold:
-    runs-on: runs-on/fleet=benchmark-posthog-sticky/env=dev
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=action-feature-sticky-e2e-20260730:20gb:gp3:300mbps/env=dev/spot=false
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -51,7 +51,7 @@ jobs:
 
   warm:
     needs: wait-for-snapshot
-    runs-on: runs-on/fleet=benchmark-posthog-sticky/env=dev
+    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=action-feature-sticky-e2e-20260730:20gb:gp3:300mbps/env=dev/spot=false
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
