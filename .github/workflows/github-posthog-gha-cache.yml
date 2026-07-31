@@ -1,0 +1,191 @@
+name: Experiment / GitHub PostHog GHA Cache
+
+run-name: GHA cache / ${{ contains(github.event.head_commit.message, '[cold]') && 'cold' || 'frontend-change' }} / run ${{ github.run_number }}
+
+on:
+  push:
+    branches:
+      - auto/posthog-gha-cache-20260731
+
+env:
+  CACHE_SCOPE: posthog-gha-cache-20260731-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experiment-posthog-gha-cache-20260731-v1
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          submodules: recursive
+
+      - name: Determine source and apply meaningful frontend mutation
+        run: |
+          # shellcheck disable=SC2129
+          set -euo pipefail
+          if git log -1 --pretty=%B | grep -Fq '[cold]'; then
+            scenario=cold
+            mutation_id=
+          else
+            scenario=frontend-change
+            printf -v mutation_id '%032d' "${GITHUB_RUN_NUMBER}"
+          fi
+          {
+            echo "UPSTREAM_SHA=$(git -C upstream rev-parse HEAD)"
+            echo "SCENARIO=${scenario}"
+            echo "MUTATION_ID=${mutation_id}"
+          } >> "${GITHUB_ENV}"
+          if [[ "${scenario}" == "frontend-change" ]]; then
+            printf '\n// Expose the sticky-retention experiment marker.\n' >> upstream/frontend/src/index.tsx
+            printf "document.documentElement.dataset.runsOnStickyRetention = '%s';\n" "${mutation_id}" >> upstream/frontend/src/index.tsx
+          fi
+          git -C upstream diff --check
+          git -C upstream diff --stat
+
+      - name: Reclaim GitHub runner disk space
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/gha-cache-benchmark"
+          df -B1 / > "${RUNNER_TEMP}/gha-cache-benchmark/df-before-cleanup.txt"
+          sudo rm -rf /opt
+          df -B1 / > "${RUNNER_TEMP}/gha-cache-benchmark/df-after-cleanup.txt"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        with:
+          name: posthog-gha-cache
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 1
+
+      - name: Record environment before build
+        run: |
+          set -euo pipefail
+          artifact_dir="${RUNNER_TEMP}/gha-cache-benchmark"
+          mkdir -p "${artifact_dir}"
+          root_device="$(readlink -f "$(findmnt -n -o SOURCE --target /)")"
+          root_block="$(basename "${root_device}")"
+          {
+            echo "ROOT_DEVICE=${root_device}"
+            echo "ROOT_BLOCK=${root_block}"
+          } >> "${GITHUB_ENV}"
+          if [[ -r "/sys/class/block/${root_block}/stat" ]]; then
+            cp "/sys/class/block/${root_block}/stat" "${artifact_dir}/root-diskstat-before-build.txt"
+          fi
+          {
+            echo "cache_scope=${CACHE_SCOPE}"
+            echo "scenario=${SCENARIO}"
+            echo "mutation_id=${MUTATION_ID}"
+            echo "upstream_sha=${UPSTREAM_SHA}"
+            echo "runner_image=${ImageOS:-unknown}-${ImageVersion:-unknown}"
+            echo "cpus=$(nproc)"
+            echo "root_device=${root_device}"
+            echo "recorded_at=$(date --iso-8601=ns)"
+          } | tee "${artifact_dir}/metadata.txt"
+          grep MemTotal /proc/meminfo | tee "${artifact_dir}/memory.txt"
+          df -B1 / | tee "${artifact_dir}/df-before-build.txt"
+          df -i / | tee "${artifact_dir}/df-inodes-before-build.txt"
+          lsblk --bytes --output NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS \
+            > "${artifact_dir}/lsblk.txt"
+          docker version > "${artifact_dir}/docker-version.txt"
+          docker buildx version > "${artifact_dir}/buildx-version.txt"
+          docker buildx inspect --builder posthog-gha-cache --bootstrap \
+            > "${artifact_dir}/buildx-inspect-before.txt"
+          docker buildx du --builder posthog-gha-cache --format '{{json .}}' \
+            > "${artifact_dir}/du-before-build.ndjson"
+          date +%s%N > "${artifact_dir}/build-start-ns.txt"
+
+      - name: Build PostHog with GitHub Actions cache
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        env:
+          DOCKER_BUILD_RECORD_RETENTION_DAYS: 10
+          DOCKER_BUILD_RECORD_UPLOAD: true
+          DOCKER_BUILD_SUMMARY: true
+        with:
+          builder: posthog-gha-cache
+          context: ./upstream
+          cache-from: type=gha,scope=${{ env.CACHE_SCOPE }},version=2
+          cache-to: type=gha,scope=${{ env.CACHE_SCOPE }},mode=max,version=2
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Record final build state
+        if: ${{ always() }}
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          BUILD_IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          set +e
+          artifact_dir="${RUNNER_TEMP}/gha-cache-benchmark"
+          mkdir -p "${artifact_dir}"
+          date +%s%N > "${artifact_dir}/build-end-ns.txt"
+          if [[ -n "${ROOT_BLOCK:-}" && -r "/sys/class/block/${ROOT_BLOCK}/stat" ]]; then
+            cp "/sys/class/block/${ROOT_BLOCK}/stat" "${artifact_dir}/root-diskstat-after-build.txt"
+          fi
+          printf '%s\n' "${BUILD_DIGEST}" > "${artifact_dir}/build-digest.txt"
+          printf '%s\n' "${BUILD_IMAGE_ID}" > "${artifact_dir}/build-image-id.txt"
+          printf '%s\n' "${BUILD_METADATA}" > "${artifact_dir}/build-metadata.json"
+          jq empty "${artifact_dir}/build-metadata.json" 2>/dev/null || true
+          df -B1 / | tee "${artifact_dir}/df-after-build.txt"
+          df -i / | tee "${artifact_dir}/df-inodes-after-build.txt"
+          docker buildx inspect --builder posthog-gha-cache \
+            > "${artifact_dir}/buildx-inspect-after.txt" 2>&1
+          docker buildx du --builder posthog-gha-cache --format '{{json .}}' \
+            > "${artifact_dir}/du-after-build.ndjson" 2>&1
+          docker system df -v > "${artifact_dir}/docker-df-after.txt" 2>&1
+          container_id="$(docker ps -aq --filter name=buildx_buildkit_posthog-gha-cache0 | head -1)"
+          if [[ -n "${container_id}" ]]; then
+            docker logs "${container_id}" > "${artifact_dir}/buildkit.log" 2>&1
+          fi
+
+      - name: Summarize experiment run
+        if: ${{ always() }}
+        run: |
+          set +e
+          artifact_dir="${RUNNER_TEMP}/gha-cache-benchmark"
+          solve_seconds="$(
+            awk -v start="$(cat "${artifact_dir}/build-start-ns.txt" 2>/dev/null)" \
+                -v end="$(cat "${artifact_dir}/build-end-ns.txt" 2>/dev/null)" \
+                'BEGIN { if (start && end) printf "%.3f", (end - start) / 1000000000; else print "n/a" }'
+          )"
+          before_used="$(awk 'NR == 2 { print $3 }' "${artifact_dir}/df-before-build.txt" 2>/dev/null)"
+          before_free="$(awk 'NR == 2 { print $4 }' "${artifact_dir}/df-before-build.txt" 2>/dev/null)"
+          after_used="$(awk 'NR == 2 { print $3 }' "${artifact_dir}/df-after-build.txt" 2>/dev/null)"
+          after_free="$(awk 'NR == 2 { print $4 }' "${artifact_dir}/df-after-build.txt" 2>/dev/null)"
+          {
+            echo "## GitHub-hosted BuildKit GHA cache run"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---:|"
+            echo "| Scenario | \`${SCENARIO}\` |"
+            echo "| Mutation | \`${MUTATION_ID:-cold-seed}\` |"
+            echo "| Cache scope | \`${CACHE_SCOPE}\` |"
+            echo "| Build action elapsed | ${solve_seconds}s |"
+            echo "| Filesystem used before / after | ${before_used:-n/a} / ${after_used:-n/a} bytes |"
+            echo "| Filesystem free before / after | ${before_free:-n/a} / ${after_free:-n/a} bytes |"
+            echo
+            echo "The BuildKit build record uploaded by docker/build-push-action contains cache import, solve, compression, and GHA export timings."
+          } | tee "${artifact_dir}/summary.md" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload benchmark evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: github-gha-cache-${{ github.run_id }}
+          path: ${{ runner.temp }}/gha-cache-benchmark
+          if-no-files-found: warn
+          retention-days: 10
