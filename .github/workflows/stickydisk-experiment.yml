@@ -36,11 +36,11 @@ jobs:
             runs_on: false
             sticky: false
           - backend: runs-on-s3-cache
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=dev/spot=false
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
             runs_on: true
             sticky: false
-          - backend: runs-on-sticky-disk-300mbps
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260730:120gb:gp3:300mbps/env=dev/spot=false
+          - backend: runs-on-sticky-disk-300mibps
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260805:80gb:gp3:300mibps/env=demo/spot=false
             runs_on: true
             sticky: true
 
@@ -51,13 +51,13 @@ jobs:
       - name: Configure RunsOn and sticky BuildKit cache
         if: ${{ matrix.runs_on }}
         id: runs-on
-        uses: runs-on/action@feature/sticky
+        uses: runs-on/action@v2
         with:
-          sticky_cache: ${{ matrix.sticky && 'buildkit' || '' }}
+          sticky_cache: |
+            ${{ matrix.sticky && 'buildkit' || '' }}
           show_costs: summary
-          metrics: cpu,memory,disk
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -91,17 +91,9 @@ jobs:
           name: ${{ steps.runs-on.outputs.buildkit-builder }}
           version: v0.34.1
           driver: docker-container
-          driver-opts: |
-            image=moby/buildkit:v0.31.1
           cleanup: false
           buildkitd-config-inline: |
             ${{ steps.runs-on.outputs.buildkit-inline-config }}
-            [worker.oci]
-              gc = true
-              reservedSpace = "30%"
-              maxUsedSpace = "60%"
-              minFreeSpace = "20GB"
-              max-parallelism = 1
 
       - name: Record environment and cache state
         env:
@@ -161,13 +153,13 @@ jobs:
     steps:
       - name: Configure RunsOn and sticky BuildKit cache
         id: runs-on
-        uses: runs-on/action@feature/sticky
+        uses: runs-on/action@v2
         with:
-          sticky_cache: buildkit
+          sticky_cache: |
+            buildkit
           show_costs: summary
-          metrics: cpu,memory,disk
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -206,12 +198,6 @@ jobs:
           cleanup: false
           buildkitd-config-inline: |
             ${{ steps.runs-on.outputs.buildkit-inline-config }}
-            [worker.oci]
-              gc = true
-              reservedSpace = "30%"
-              maxUsedSpace = "60%"
-              minFreeSpace = "20GB"
-              max-parallelism = 1
 
       - name: Sticky disk state before build
         run: |
