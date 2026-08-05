@@ -19,24 +19,34 @@ jobs:
         include:
           - backend: github-gha-cache
             cache_id: github-gha
-            runner: ubuntu-latest-4-cores
+            runner: ubuntu-24.04
             runs_on: false
             sticky: false
+            registry: false
           - backend: runs-on-magic-cache
             cache_id: runs-on-magic
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
             runs_on: true
             sticky: false
+            registry: false
+          - backend: runs-on-ecr-cache
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=ecr-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
+            runs_on: true
+            sticky: false
+            registry: true
           - backend: runs-on-sticky-lazy-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
           - backend: runs-on-sticky-200mibps-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -94,12 +104,26 @@ jobs:
               max-parallelism = 1
 
       - name: Build PostHog with GHA cache
-        if: ${{ !matrix.sticky }}
+        if: ${{ !matrix.sticky && !matrix.registry }}
         uses: docker/build-push-action@v7
         with:
           context: ./upstream
           cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max,compression=zstd,compression-level=1,force-compression=true
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with ECR cache
+        if: ${{ matrix.registry }}
+        uses: docker/build-push-action@v7
+        env:
+          TAG: ${{ env.RUNS_ON_ECR_CACHE }}:posthog-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          context: ./upstream
+          push: true
+          tags: ${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.TAG }}
+          cache-to: type=registry,ref=${{ env.TAG }},mode=max,compression=zstd,compression-level=1,force-compression=true
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
@@ -135,24 +159,34 @@ jobs:
         include:
           - backend: github-gha-cache
             cache_id: github-gha
-            runner: ubuntu-latest-4-cores
+            runner: ubuntu-24.04
             runs_on: false
             sticky: false
+            registry: false
           - backend: runs-on-magic-cache
             cache_id: runs-on-magic
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
             runs_on: true
             sticky: false
+            registry: false
+          - backend: runs-on-ecr-cache
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=ecr-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
+            runs_on: true
+            sticky: false
+            registry: true
           - backend: runs-on-sticky-lazy-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
           - backend: runs-on-sticky-200mibps-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -216,12 +250,26 @@ jobs:
               max-parallelism = 1
 
       - name: Build PostHog with GHA cache
-        if: ${{ !matrix.sticky }}
+        if: ${{ !matrix.sticky && !matrix.registry }}
         uses: docker/build-push-action@v7
         with:
           context: ./upstream
           cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max,compression=zstd,compression-level=1,force-compression=true
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with ECR cache
+        if: ${{ matrix.registry }}
+        uses: docker/build-push-action@v7
+        env:
+          TAG: ${{ env.RUNS_ON_ECR_CACHE }}:posthog-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          context: ./upstream
+          push: true
+          tags: ${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.TAG }}
+          cache-to: type=registry,ref=${{ env.TAG }},mode=max,compression=zstd,compression-level=1,force-compression=true
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
@@ -257,24 +305,34 @@ jobs:
         include:
           - backend: github-gha-cache
             cache_id: github-gha
-            runner: ubuntu-latest-4-cores
+            runner: ubuntu-24.04
             runs_on: false
             sticky: false
+            registry: false
           - backend: runs-on-magic-cache
             cache_id: runs-on-magic
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
             runs_on: true
             sticky: false
+            registry: false
+          - backend: runs-on-ecr-cache
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=ecr-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
+            runs_on: true
+            sticky: false
+            registry: true
           - backend: runs-on-sticky-lazy-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
           - backend: runs-on-sticky-200mibps-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -338,12 +396,26 @@ jobs:
               max-parallelism = 1
 
       - name: Build PostHog with GHA cache
-        if: ${{ !matrix.sticky }}
+        if: ${{ !matrix.sticky && !matrix.registry }}
         uses: docker/build-push-action@v7
         with:
           context: ./upstream
           cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max,compression=zstd,compression-level=1,force-compression=true
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with ECR cache
+        if: ${{ matrix.registry }}
+        uses: docker/build-push-action@v7
+        env:
+          TAG: ${{ env.RUNS_ON_ECR_CACHE }}:posthog-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          context: ./upstream
+          push: true
+          tags: ${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.TAG }}
+          cache-to: type=registry,ref=${{ env.TAG }},mode=max,compression=zstd,compression-level=1,force-compression=true
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
@@ -379,24 +451,34 @@ jobs:
         include:
           - backend: github-gha-cache
             cache_id: github-gha
-            runner: ubuntu-latest-4-cores
+            runner: ubuntu-24.04
             runs_on: false
             sticky: false
+            registry: false
           - backend: runs-on-magic-cache
             cache_id: runs-on-magic
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
             runs_on: true
             sticky: false
+            registry: false
+          - backend: runs-on-ecr-cache
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=ecr-cache/volume=60gb:gp3:400mibps/env=demo/spot=false
+            runs_on: true
+            sticky: false
+            registry: true
           - backend: runs-on-sticky-lazy-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
           - backend: runs-on-sticky-200mibps-init
             cache_id: unused
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
             runs_on: true
             sticky: true
+            registry: false
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -460,12 +542,26 @@ jobs:
               max-parallelism = 1
 
       - name: Build PostHog with GHA cache
-        if: ${{ !matrix.sticky }}
+        if: ${{ !matrix.sticky && !matrix.registry }}
         uses: docker/build-push-action@v7
         with:
           context: ./upstream
           cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max,compression=zstd,compression-level=1,force-compression=true
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with ECR cache
+        if: ${{ matrix.registry }}
+        uses: docker/build-push-action@v7
+        env:
+          TAG: ${{ env.RUNS_ON_ECR_CACHE }}:posthog-${{ github.run_id }}-${{ github.run_attempt }}
+        with:
+          context: ./upstream
+          push: true
+          tags: ${{ env.TAG }}
+          cache-from: type=registry,ref=${{ env.TAG }}
+          cache-to: type=registry,ref=${{ env.TAG }},mode=max,compression=zstd,compression-level=1,force-compression=true
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
