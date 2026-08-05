@@ -66,7 +66,10 @@ jobs:
 
       - name: Reclaim GitHub runner disk space
         if: ${{ !matrix.runs_on }}
-        run: sudo rm -rf /opt
+        run: |
+          sudo rm -rf /opt
+          sudo mkdir /opt
+          sudo chown "$(id -u):$(id -g)" /opt
 
       - name: Set up ephemeral Buildx
         if: ${{ !matrix.sticky }}
@@ -212,7 +215,10 @@ jobs:
 
       - name: Reclaim GitHub runner disk space
         if: ${{ !matrix.runs_on }}
-        run: sudo rm -rf /opt
+        run: |
+          sudo rm -rf /opt
+          sudo mkdir /opt
+          sudo chown "$(id -u):$(id -g)" /opt
 
       - name: Set up ephemeral Buildx
         if: ${{ !matrix.sticky }}
@@ -358,7 +364,10 @@ jobs:
 
       - name: Reclaim GitHub runner disk space
         if: ${{ !matrix.runs_on }}
-        run: sudo rm -rf /opt
+        run: |
+          sudo rm -rf /opt
+          sudo mkdir /opt
+          sudo chown "$(id -u):$(id -g)" /opt
 
       - name: Set up ephemeral Buildx
         if: ${{ !matrix.sticky }}
@@ -504,7 +513,10 @@ jobs:
 
       - name: Reclaim GitHub runner disk space
         if: ${{ !matrix.runs_on }}
-        run: sudo rm -rf /opt
+        run: |
+          sudo rm -rf /opt
+          sudo mkdir /opt
+          sudo chown "$(id -u):$(id -g)" /opt
 
       - name: Set up ephemeral Buildx
         if: ${{ !matrix.sticky }}
