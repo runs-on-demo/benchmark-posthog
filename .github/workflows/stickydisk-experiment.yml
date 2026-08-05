@@ -2,51 +2,43 @@ name: Experiment / PostHog Cache Comparison
 
 on:
   workflow_dispatch:
-    inputs:
-      scenario:
-        description: Build scenario to benchmark
-        type: choice
-        options:
-          - warm-no-change
-          - frontend-change
-          - disk-pressure
-        default: warm-no-change
-      mutation_id:
-        description: Unique source mutation identifier for disk-pressure runs
-        required: false
-        type: string
 
 concurrency:
-  group: experiment-posthog-stickydisk-${{ inputs.scenario == 'disk-pressure' && 'pressure' || 'comparison' }}
+  group: experiment-posthog-cache-comparison
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    if: ${{ inputs.scenario != 'disk-pressure' }}
-    name: ${{ matrix.backend }}
+  cold:
+    name: Cold / ${{ matrix.backend }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - backend: github-gha-cache
-            runner: ubuntu-24.04
+            cache_id: github-gha
+            runner: ubuntu-latest-4-cores
             runs_on: false
             sticky: false
-          - backend: runs-on-s3-cache
+          - backend: runs-on-magic-cache
+            cache_id: runs-on-magic
             runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
             runs_on: true
             sticky: false
-          - backend: runs-on-sticky-disk-300mibps
-            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260805:80gb:gp3:300mibps/env=demo/spot=false
+          - backend: runs-on-sticky-lazy-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
             runs_on: true
             sticky: true
-
+          - backend: runs-on-sticky-200mibps-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-
     steps:
       - name: Configure RunsOn and sticky BuildKit cache
         if: ${{ matrix.runs_on }}
@@ -56,21 +48,11 @@ jobs:
           sticky_cache: |
             ${{ matrix.sticky && 'buildkit' || '' }}
           show_costs: summary
+          metrics: cpu,memory,disk
 
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
-      - name: Determine upstream commit SHA
-        id: upstream
-        run: echo "sha=$(cd upstream && git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Apply controlled frontend change
-        if: ${{ inputs.scenario == 'frontend-change' }}
-        run: |
-          printf '\n// RunsOn cache benchmark: controlled frontend change.\n' >> upstream/frontend/src/index.tsx
-          git -C upstream diff --check
-          git -C upstream diff --stat
 
       - name: Reclaim GitHub runner disk space
         if: ${{ !matrix.runs_on }}
@@ -78,117 +60,23 @@ jobs:
 
       - name: Set up ephemeral Buildx
         if: ${{ !matrix.sticky }}
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
           buildkitd-config-inline: |
             [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
               max-parallelism = 1
 
       - name: Set up persistent Buildx
         if: ${{ matrix.sticky }}
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-        with:
-          name: ${{ steps.runs-on.outputs.buildkit-builder }}
-          version: v0.34.1
-          driver: docker-container
-          cleanup: false
-          buildkitd-config-inline: |
-            ${{ steps.runs-on.outputs.buildkit-inline-config }}
-
-      - name: Record environment and cache state
-        env:
-          BACKEND: ${{ matrix.backend }}
-          STICKY_CACHE_HIT: ${{ steps.runs-on.outputs.cache-hit }}
-          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
-        run: |
-          set -euxo pipefail
-          echo "BACKEND=${BACKEND}"
-          echo "UPSTREAM_SHA=${UPSTREAM_SHA}"
-          echo "CACHE_HIT=${STICKY_CACHE_HIT:-remote-cache-managed-by-buildkit}"
-          echo "RUNS_ON_INSTANCE_TYPE=${RUNS_ON_INSTANCE_TYPE:-github-hosted}"
-          echo "CPUS=$(nproc)"
-          grep MemTotal /proc/meminfo
-          docker version
-          docker buildx version
-          docker buildx inspect --bootstrap
-          if [ "${BACKEND}" = "runs-on-sticky-disk-300mbps" ]; then
-            test -f "${RUNS_ON_STICKYDISK_READY_FILE}"
-            grep -Fx "${RUNS_ON_STICKYDISK_DIR}" "${RUNS_ON_STICKYDISK_READY_FILE}"
-            test -d "${RUNS_ON_STICKYDISK_DIR}/buildkit/root"
-            cat "${RUNS_ON_STICKYDISK_TIMINGS_FILE}" 2>/dev/null || true
-            df -h "${RUNS_ON_STICKYDISK_DIR}"
-          fi
-
-      - name: Build PostHog with remote cache
-        if: ${{ !matrix.sticky }}
-        uses: docker/build-push-action@v4
-        with:
-          context: ./upstream
-          cache-from: type=gha,scope=posthog-m8a-feature-sticky-v7-300mbps
-          cache-to: type=gha,scope=posthog-m8a-feature-sticky-v7-300mbps,mode=max
-          build-args: |
-            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
-
-      - name: Build PostHog with sticky cache
-        if: ${{ matrix.sticky }}
-        uses: docker/build-push-action@v4
-        with:
-          builder: ${{ steps.runs-on.outputs.buildkit-builder }}
-          context: ./upstream
-          build-args: |
-            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
-
-      - name: Final disk state
-        if: ${{ always() }}
-        run: |
-          docker system df || true
-          df -h / "${RUNS_ON_STICKYDISK_DIR:-/}" || true
-
-  pressure:
-    if: ${{ inputs.scenario == 'disk-pressure' }}
-    name: sticky-disk-pressure-${{ inputs.mutation_id }}
-    runs-on: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-feature-sticky-20260730:120gb:gp3:300mbps/env=dev/spot=false
-    timeout-minutes: 90
-
-    steps:
-      - name: Configure RunsOn and sticky BuildKit cache
-        id: runs-on
-        uses: runs-on/action@v2
-        with:
-          sticky_cache: |
-            buildkit
-          show_costs: summary
-
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Apply meaningful frontend mutation
-        env:
-          MUTATION_ID: ${{ inputs.mutation_id }}
-        run: |
-          set -euo pipefail
-          test -n "${MUTATION_ID}"
-          printf '\n// Expose the deployed cache-generation marker for diagnostics.\n' >> upstream/frontend/src/index.tsx
-          printf "document.documentElement.dataset.runsOnCacheGeneration = '%s';\n" "${MUTATION_ID}" >> upstream/frontend/src/index.tsx
-          git -C upstream diff --check
-          git -C upstream diff --stat
-          git -C upstream diff -- frontend/src/index.tsx
-
-      - name: Sticky disk state before BuildKit setup
-        env:
-          CACHE_HIT: ${{ steps.runs-on.outputs.cache-hit }}
-        run: |
-          set -euxo pipefail
-          echo "CACHE_HIT=${CACHE_HIT}"
-          test -f "${RUNS_ON_STICKYDISK_READY_FILE}"
-          grep -Fx "${RUNS_ON_STICKYDISK_DIR}" "${RUNS_ON_STICKYDISK_READY_FILE}"
-          df -h "${RUNS_ON_STICKYDISK_DIR}"
-          df -i "${RUNS_ON_STICKYDISK_DIR}"
-          du -x -h --max-depth=2 "${RUNS_ON_STICKYDISK_DIR}" 2>/dev/null | sort -h | tail -30 || true
-
-      - name: Set up persistent Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@v4
         with:
           name: ${{ steps.runs-on.outputs.buildkit-builder }}
           version: v0.34.1
@@ -198,29 +86,400 @@ jobs:
           cleanup: false
           buildkitd-config-inline: |
             ${{ steps.runs-on.outputs.buildkit-inline-config }}
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
 
-      - name: Sticky disk state before build
-        run: |
-          set -euxo pipefail
-          docker buildx inspect --builder "${{ steps.runs-on.outputs.buildkit-builder }}" --bootstrap
-          docker buildx du --builder "${{ steps.runs-on.outputs.buildkit-builder }}" || true
-          df -h "${RUNS_ON_STICKYDISK_DIR}"
-          df -i "${RUNS_ON_STICKYDISK_DIR}"
+      - name: Build PostHog with GHA cache
+        if: ${{ !matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./upstream
+          cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
       - name: Build PostHog with sticky cache
-        uses: docker/build-push-action@v4
+        if: ${{ matrix.sticky }}
+        uses: docker/build-push-action@v7
         with:
           builder: ${{ steps.runs-on.outputs.buildkit-builder }}
           context: ./upstream
           build-args: |
             BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
 
-      - name: Sticky disk state before teardown
+      - name: Record final cache state
         if: ${{ always() }}
         run: |
-          set +e
-          docker buildx du --builder "${{ steps.runs-on.outputs.buildkit-builder }}"
-          docker system df
-          df -h "${RUNS_ON_STICKYDISK_DIR}"
-          df -i "${RUNS_ON_STICKYDISK_DIR}"
-          du -x -h --max-depth=2 "${RUNS_ON_STICKYDISK_DIR}" 2>/dev/null | sort -h | tail -30
+          docker system df || true
+          df -h / "${RUNS_ON_STICKYDISK_DIR:-/}" || true
+
+  wait-after-cold:
+    name: Wait for cold snapshots
+    needs: cold
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - run: sleep 120
+
+  warm-1:
+    name: Warm 1 / ${{ matrix.backend }}
+    needs: wait-after-cold
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: github-gha-cache
+            cache_id: github-gha
+            runner: ubuntu-latest-4-cores
+            runs_on: false
+            sticky: false
+          - backend: runs-on-magic-cache
+            cache_id: runs-on-magic
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runs_on: true
+            sticky: false
+          - backend: runs-on-sticky-lazy-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+          - backend: runs-on-sticky-200mibps-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Configure RunsOn and sticky BuildKit cache
+        if: ${{ matrix.runs_on }}
+        id: runs-on
+        uses: runs-on/action@v2
+        with:
+          sticky_cache: |
+            ${{ matrix.sticky && 'buildkit' || '' }}
+          show_costs: summary
+          metrics: cpu,memory,disk
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Apply frontend mutation 0001
+        run: |
+          printf '\n// RunsOn cache benchmark marker: 0001\n' >> upstream/frontend/src/index.tsx
+          git -C upstream diff --check
+          git -C upstream diff --stat
+
+      - name: Reclaim GitHub runner disk space
+        if: ${{ !matrix.runs_on }}
+        run: sudo rm -rf /opt
+
+      - name: Set up ephemeral Buildx
+        if: ${{ !matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Set up persistent Buildx
+        if: ${{ matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          name: ${{ steps.runs-on.outputs.buildkit-builder }}
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          cleanup: false
+          buildkitd-config-inline: |
+            ${{ steps.runs-on.outputs.buildkit-inline-config }}
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Build PostHog with GHA cache
+        if: ${{ !matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./upstream
+          cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with sticky cache
+        if: ${{ matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.runs-on.outputs.buildkit-builder }}
+          context: ./upstream
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Record final cache state
+        if: ${{ always() }}
+        run: |
+          docker system df || true
+          df -h / "${RUNS_ON_STICKYDISK_DIR:-/}" || true
+
+  wait-after-warm-1:
+    name: Wait for warm 1 snapshots
+    needs: warm-1
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - run: sleep 120
+
+  warm-2:
+    name: Warm 2 / ${{ matrix.backend }}
+    needs: wait-after-warm-1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: github-gha-cache
+            cache_id: github-gha
+            runner: ubuntu-latest-4-cores
+            runs_on: false
+            sticky: false
+          - backend: runs-on-magic-cache
+            cache_id: runs-on-magic
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runs_on: true
+            sticky: false
+          - backend: runs-on-sticky-lazy-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+          - backend: runs-on-sticky-200mibps-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Configure RunsOn and sticky BuildKit cache
+        if: ${{ matrix.runs_on }}
+        id: runs-on
+        uses: runs-on/action@v2
+        with:
+          sticky_cache: |
+            ${{ matrix.sticky && 'buildkit' || '' }}
+          show_costs: summary
+          metrics: cpu,memory,disk
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Apply frontend mutation 0002
+        run: |
+          printf '\n// RunsOn cache benchmark marker: 0002\n' >> upstream/frontend/src/index.tsx
+          git -C upstream diff --check
+          git -C upstream diff --stat
+
+      - name: Reclaim GitHub runner disk space
+        if: ${{ !matrix.runs_on }}
+        run: sudo rm -rf /opt
+
+      - name: Set up ephemeral Buildx
+        if: ${{ !matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Set up persistent Buildx
+        if: ${{ matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          name: ${{ steps.runs-on.outputs.buildkit-builder }}
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          cleanup: false
+          buildkitd-config-inline: |
+            ${{ steps.runs-on.outputs.buildkit-inline-config }}
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Build PostHog with GHA cache
+        if: ${{ !matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./upstream
+          cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with sticky cache
+        if: ${{ matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.runs-on.outputs.buildkit-builder }}
+          context: ./upstream
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Record final cache state
+        if: ${{ always() }}
+        run: |
+          docker system df || true
+          df -h / "${RUNS_ON_STICKYDISK_DIR:-/}" || true
+
+  wait-after-warm-2:
+    name: Wait for warm 2 snapshots
+    needs: warm-2
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - run: sleep 120
+
+  warm-3:
+    name: Warm 3 / ${{ matrix.backend }}
+    needs: wait-after-warm-2
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: github-gha-cache
+            cache_id: github-gha
+            runner: ubuntu-latest-4-cores
+            runs_on: false
+            sticky: false
+          - backend: runs-on-magic-cache
+            cache_id: runs-on-magic
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/extras=s3-cache/env=demo/spot=false
+            runs_on: true
+            sticky: false
+          - backend: runs-on-sticky-lazy-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-lazy-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:lazy-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+          - backend: runs-on-sticky-200mibps-init
+            cache_id: unused
+            runner: runs-on=${{ github.run_id }}/runner=4cpu-linux-x64/family=m8a.xlarge/sticky=posthog-init-${{ github.run_id }}-${{ github.run_attempt }}:60gb:gp3:400mibps:200mibps-init/env=demo/spot=false
+            runs_on: true
+            sticky: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Configure RunsOn and sticky BuildKit cache
+        if: ${{ matrix.runs_on }}
+        id: runs-on
+        uses: runs-on/action@v2
+        with:
+          sticky_cache: |
+            ${{ matrix.sticky && 'buildkit' || '' }}
+          show_costs: summary
+          metrics: cpu,memory,disk
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Apply frontend mutation 0003
+        run: |
+          printf '\n// RunsOn cache benchmark marker: 0003\n' >> upstream/frontend/src/index.tsx
+          git -C upstream diff --check
+          git -C upstream diff --stat
+
+      - name: Reclaim GitHub runner disk space
+        if: ${{ !matrix.runs_on }}
+        run: sudo rm -rf /opt
+
+      - name: Set up ephemeral Buildx
+        if: ${{ !matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Set up persistent Buildx
+        if: ${{ matrix.sticky }}
+        uses: docker/setup-buildx-action@v4
+        with:
+          name: ${{ steps.runs-on.outputs.buildkit-builder }}
+          version: v0.34.1
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.31.1
+          cleanup: false
+          buildkitd-config-inline: |
+            ${{ steps.runs-on.outputs.buildkit-inline-config }}
+            [worker.oci]
+              gc = true
+              reservedSpace = "30%"
+              maxUsedSpace = "60%"
+              minFreeSpace = "20GB"
+              max-parallelism = 1
+
+      - name: Build PostHog with GHA cache
+        if: ${{ !matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./upstream
+          cache-from: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          cache-to: type=gha,scope=posthog-${{ matrix.cache_id }}-${{ github.run_id }}-${{ github.run_attempt }},mode=max
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Build PostHog with sticky cache
+        if: ${{ matrix.sticky }}
+        uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.runs-on.outputs.buildkit-builder }}
+          context: ./upstream
+          build-args: |
+            BUILDKIT_CONTEXT_KEEP_GIT_DIR=1
+
+      - name: Record final cache state
+        if: ${{ always() }}
+        run: |
+          docker system df || true
+          df -h / "${RUNS_ON_STICKYDISK_DIR:-/}" || true
